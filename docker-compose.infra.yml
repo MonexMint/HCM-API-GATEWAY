@@ -1,0 +1,65 @@
+# HCM local infrastructure: Postgres, Kafka (KRaft, no ZooKeeper), Redis.
+#
+# Usage (from this repo root):
+#   docker compose -f docker-compose.infra.yml up -d
+#   docker compose -f docker-compose.infra.yml down        # keep volumes
+#   docker compose -f docker-compose.infra.yml down -v    # wipe all data
+#
+# The services run locally (IDE / java -jar / npm) and reach this infra
+# through their default localhost settings, no extra env needed:
+#   Postgres -> jdbc:postgresql://localhost:5432/postgres (postgres/postgres)
+#   Kafka    -> localhost:9092  (topics auto-created)
+#   Redis    -> localhost:6379
+# Real secrets stay in your local .env / secret manager — never in this file.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hcm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: hcm-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    volumes:
+      - kdata:/var/lib/kafka/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: hcm-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - rdata:/data
+
+volumes:
+  pgdata:
+  kdata:
+  rdata:
